@@ -140,3 +140,13 @@ saved_models/*.csv
 # Data (uncomment if you want to ignore large data files)
 data/
 dataset/
+
+# Frontend (Node.js)
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Vite env (local overrides)
+.env.local
+.env.*.local
