@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Dropzone from "../components/Dropzone";
-import { predictVideo } from "../api/client";
+import { predictVideo, predictVideoLSTM } from "../api/client";
 
 export default function VideoPage() {
   const [file, setFile] = useState(null);
@@ -9,6 +9,7 @@ export default function VideoPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [sampleRate, setSampleRate] = useState(10);
+  const [mode, setMode] = useState("frame"); // "frame" or "lstm"
 
   const handleFile = (f) => {
     setFile(f);
@@ -22,7 +23,12 @@ export default function VideoPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await predictVideo(file, sampleRate);
+      let data;
+      if (mode === "lstm") {
+        data = await predictVideoLSTM(file, sampleRate);
+      } else {
+        data = await predictVideo(file, sampleRate);
+      }
       setResult(data);
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Prediction failed");
@@ -80,8 +86,32 @@ export default function VideoPage() {
             <video
               src={preview}
               controls
-              className="w-full rounded-lg border border-gray-200"
+              className="w-full rounded-lg border border-gray-200 mb-4"
             />
+            
+            <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+              <button
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                  mode === "frame" ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-black"
+                }`}
+                onClick={() => setMode("frame")}
+              >
+                Frame-by-frame
+              </button>
+              <button
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                  mode === "lstm" ? "bg-white shadow-sm text-black" : "text-gray-500 hover:text-black"
+                }`}
+                onClick={() => setMode("lstm")}
+              >
+                LSTM Temporal
+              </button>
+            </div>
+            {mode === "lstm" && (
+              <div className="mt-2 text-xs text-gray-500 bg-blue-50 p-3 rounded-md border border-blue-100">
+                <strong>LSTM Temporal Analysis:</strong> LSTM analyzes frames as a sequence, capturing temporal patterns that frame-by-frame voting misses.
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col">
@@ -135,6 +165,7 @@ export default function VideoPage() {
 }
 
 function VideoResult({ result }) {
+  const isLSTM = result.analysis_method === "lstm_temporal";
   const totalSampled = result.sampled_frames;
   const entries = Object.entries(result.class_distribution).sort(
     (a, b) => b[1] - a[1]
@@ -142,28 +173,48 @@ function VideoResult({ result }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs uppercase text-gray-500 font-semibold tracking-wide mb-1">
-          Dominant Class
+      {isLSTM ? (
+        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+          <div className="text-xs uppercase text-gray-500 font-semibold tracking-wide mb-1">
+            LSTM Sequence Prediction
+          </div>
+          <div className="text-3xl font-bold capitalize text-accent">
+            {result.lstm_prediction.predicted_class}
+          </div>
+          <div className="text-sm text-gray-600 mt-1">
+            Confidence: {(result.lstm_prediction.confidence * 100).toFixed(1)}%
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-500">
+            vs CNN frame-vote: <strong>{result.dominant_class}</strong>
+          </div>
+          <div className="mt-2 text-xs text-gray-400 font-mono">
+            Analyzed {result.frame_embeddings_shape[0]} frames × {result.frame_embeddings_shape[1]}-dim embeddings fed to LSTM
+          </div>
         </div>
-        <div className="text-3xl font-bold capitalize text-accent">
-          {result.dominant_class}
+      ) : (
+        <div>
+          <div className="text-xs uppercase text-gray-500 font-semibold tracking-wide mb-1">
+            Dominant Class
+          </div>
+          <div className="text-3xl font-bold capitalize text-accent">
+            {result.dominant_class}
+          </div>
+          <div className="text-sm text-gray-600 mt-1">
+            Found in {(result.dominant_class_ratio * 100).toFixed(1)}% of sampled
+            frames
+          </div>
         </div>
-        <div className="text-sm text-gray-600 mt-1">
-          Found in {(result.dominant_class_ratio * 100).toFixed(1)}% of sampled
-          frames
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2 text-center">
         <Stat label="Total Frames" value={result.total_frames} />
         <Stat label="Sampled" value={result.sampled_frames} />
-        <Stat label="FPS" value={result.fps} />
+        <Stat label={isLSTM ? "Method" : "FPS"} value={isLSTM ? "LSTM" : result.fps} />
       </div>
 
       <div>
         <div className="text-xs uppercase text-gray-500 font-semibold tracking-wide mb-3">
-          Class Distribution
+          CNN Frame Distribution
         </div>
         <div className="space-y-2">
           {entries.map(([cls, count]) => {
