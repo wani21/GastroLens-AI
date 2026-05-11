@@ -199,16 +199,16 @@ def large_margin_cosine_loss(margin=0.35, scale=64):
 # ===========================================================================
 # 1. CONFIGURATION
 # ===========================================================================
-DATA_DIR = "data"
+DATA_DIR = "/content/data"
 IMG_SIZE = (224, 224)
-BATCH_SIZE = 32
+BATCH_SIZE = 8
 NUM_CLASSES = 4
 SEED = 42
 
-PHASE1_EPOCHS = 10
+PHASE1_EPOCHS = 15
 PHASE1_LR = 1e-3
 
-PHASE2_EPOCHS = 15
+PHASE2_EPOCHS = 20
 PHASE2_LR = 1e-5
 
 # LMCL hyperparameters (from paper Table II)

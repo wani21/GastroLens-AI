@@ -6,11 +6,6 @@ FastAPI server exposing the trained ResNet50 model for:
   - Batch image prediction
   - Video upload + frame-by-frame prediction
   - Health check
-
-Run locally:
-    uvicorn backend.main:app --reload --port 8000
-
-API docs auto-generated at: http://localhost:8000/docs
 """
 
 import os
@@ -19,27 +14,23 @@ from collections import Counter
 from contextlib import asynccontextmanager
 from typing import List
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.model_service import model_service
-
+from backend.segmentation_model import seg_model, generate_segmentation_mask
 
 # =========================================================================
-# Lifespan: load model once at startup, free memory on shutdown
+# Lifespan
 # =========================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     try:
         model_service.load()
     except Exception as e:
         print(f"[Startup] WARNING: Could not load model: {e}")
-        # Continue anyway so health check endpoint still works
     yield
-    # Shutdown (nothing to clean up currently)
-
 
 app = FastAPI(
     title="GastroLens-AI API",
@@ -49,8 +40,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS: allow frontend on any origin during development
-# In production, restrict allow_origins to your frontend URL
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -59,39 +48,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# =========================================================================
-# Utility: validate uploaded file is an image
-# =========================================================================
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/bmp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/avi", "video/quicktime", "video/x-msvideo"}
-MAX_VIDEO_FRAMES = 60  # Cap to avoid memory blow-up on long videos
-
+MAX_VIDEO_FRAMES = 60
 
 def _validate_image(file: UploadFile) -> None:
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported image type '{file.content_type}'. "
-                   f"Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}",
+            detail=f"Unsupported image type '{file.content_type}'. Allowed: {', '.join(ALLOWED_IMAGE_TYPES)}",
         )
-
 
 def _validate_video(file: UploadFile) -> None:
     if file.content_type not in ALLOWED_VIDEO_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported video type '{file.content_type}'. "
-                   f"Allowed: {', '.join(ALLOWED_VIDEO_TYPES)}",
+            detail=f"Unsupported video type '{file.content_type}'. Allowed: {', '.join(ALLOWED_VIDEO_TYPES)}",
         )
 
-
-# =========================================================================
-# Endpoints
-# =========================================================================
 @app.get("/")
 async def root():
-    """Welcome message."""
     return {
         "name": "GastroLens-AI API",
         "version": "1.0.0",
@@ -99,13 +75,8 @@ async def root():
         "health": "/health",
     }
 
-
 @app.get("/health")
 async def health_check():
-    """
-    Health check — verifies server is running and model is loaded.
-    Returns 200 if healthy, 503 if model not loaded.
-    """
     if model_service.model is None:
         return JSONResponse(
             status_code=503,
@@ -117,18 +88,8 @@ async def health_check():
         "classes": list(model_service.class_labels.values()),
     }
 
-
 @app.post("/predict")
 async def predict_image(file: UploadFile = File(...)):
-    """
-    Predict the class of a single endoscopy image.
-
-    Returns:
-        predicted_class: e.g. "polyp"
-        predicted_class_index: e.g. 2
-        confidence: float 0-1
-        probabilities: dict of all class probabilities
-    """
     _validate_image(file)
 
     if model_service.model is None:
@@ -148,20 +109,14 @@ async def predict_image(file: UploadFile = File(...)):
         **result,
     }
 
-
 @app.post("/predict/batch")
 async def predict_batch(files: List[UploadFile] = File(...)):
-    """
-    Predict on multiple images in a single request.
-    Images are processed in one forward pass for efficiency.
-    """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
     if model_service.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    # Validate all files before processing
     for f in files:
         _validate_image(f)
 
@@ -180,47 +135,21 @@ async def predict_batch(files: List[UploadFile] = File(...)):
         ],
     }
 
-
 @app.post("/predict/video")
 async def predict_video(
     file: UploadFile = File(...),
-    frame_sample_rate: int = Query(
-        10,
-        ge=1,
-        le=100,
-        description="Sample every Nth frame (higher = faster, less detail)",
-    ),
+    frame_sample_rate: int = Query(10, ge=1, le=100),
 ):
-    """
-    Analyze a video by sampling frames and running prediction on each.
-
-    Returns:
-        total_frames: total frames in the video
-        sampled_frames: how many were analyzed
-        dominant_class: most frequent prediction across all sampled frames
-        frame_results: per-frame predictions
-        class_distribution: count of each predicted class
-
-    Notes:
-        - Frames sampled every `frame_sample_rate` (default 10)
-        - Capped at 60 sampled frames to avoid memory issues
-        - For endoscopy videos, 5-10 fps sampling is usually sufficient
-    """
     _validate_video(file)
 
     if model_service.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
-    # Import cv2 lazily — only needed for video
     try:
         import cv2
     except ImportError:
-        raise HTTPException(
-            status_code=500,
-            detail="OpenCV not installed. Run: pip install opencv-python-headless",
-        )
+        raise HTTPException(status_code=500, detail="OpenCV not installed.")
 
-    # Save upload to a temp file (OpenCV needs a file path, not bytes)
     suffix = os.path.splitext(file.filename or "")[1] or ".mp4"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await file.read())
@@ -234,7 +163,6 @@ async def predict_video(
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS) or 0
 
-        # Sample frames
         frames = []
         frame_indices = []
         idx = 0
@@ -253,16 +181,12 @@ async def predict_video(
         if not frames:
             raise HTTPException(status_code=400, detail="No frames could be extracted")
 
-        # Predict on all sampled frames in one batch
         frame_results = model_service.predict_frames(frames)
-
-        # Compute dominant class across all frames
         predicted_classes = [r["predicted_class"] for r in frame_results]
         class_counts = Counter(predicted_classes)
         dominant_class, dominant_count = class_counts.most_common(1)[0]
 
     finally:
-        # Always clean up temp file
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
@@ -280,3 +204,66 @@ async def predict_video(
             for i, r in zip(frame_indices, frame_results)
         ],
     }
+
+@app.post("/explain")
+async def explain_image(file: UploadFile = File(...), class_index: int = Form(None)):
+    _validate_image(file)
+    if model_service.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    image_bytes = await file.read()
+    try:
+        result = model_service.generate_gradcam(image_bytes, class_index)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grad-CAM generation failed: {e}")
+
+@app.post("/predict/video/lstm")
+async def predict_video_lstm_endpoint(
+    file: UploadFile = File(...),
+    frame_sample_rate: int = Query(10, ge=1, le=100)
+):
+    _validate_video(file)
+    if model_service.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    suffix = os.path.splitext(file.filename or "")[1] or ".mp4"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+
+    try:
+        result = model_service.predict_video_lstm(tmp_path, frame_sample_rate)
+        result["filename"] = file.filename
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LSTM prediction failed: {e}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+@app.post("/segment")
+async def segment_image(file: UploadFile = File(...)):
+    _validate_image(file)
+    if seg_model is None:
+        raise HTTPException(status_code=503, detail="Segmentation model not loaded")
+
+    image_bytes = await file.read()
+    try:
+        result = generate_segmentation_mask(image_bytes, seg_model)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Segmentation failed: {e}")
+
+@app.post("/shap")
+async def shap_explain(file: UploadFile = File(...)):
+    _validate_image(file)
+    if model_service.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    image_bytes = await file.read()
+    try:
+        result = model_service.generate_shap_explanation(image_bytes)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SHAP explanation failed: {e}")

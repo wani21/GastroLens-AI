@@ -32,3 +32,40 @@ export async function checkHealth() {
   const res = await apiClient.get("/health");
   return res.data;
 }
+
+export const explainImage = async (file, classIndex = null) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (classIndex !== null) {
+    formData.append("class_index", classIndex);
+  }
+  const res = await apiClient.post("/explain", formData, { headers: { "Content-Type": "multipart/form-data" } });
+  return res.data;
+};
+
+export const predictVideoLSTM = async (file, frameSampleRate = 10) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await apiClient.post(`/predict/video/lstm?frame_sample_rate=${frameSampleRate}`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 180000,
+  });
+  return res.data;
+};
+
+export const segmentImage = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await apiClient.post("/segment", formData, { headers: { "Content-Type": "multipart/form-data" } });
+  return res.data;
+};
+
+export const shapExplain = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await apiClient.post("/shap", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 300000,
+  });
+  return res.data;
+};

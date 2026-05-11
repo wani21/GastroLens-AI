@@ -17,7 +17,7 @@ function App() {
           </Routes>
         </main>
         <footer className="border-t border-gray-200 py-6 text-center text-sm text-gray-500">
-          GastroLens-AI &copy; 2026 &middot; ResNet50 Transfer Learning
+          GastroLens-AI &copy; 2026 &middot; SE-ResNet50 &middot; U-Net Segmentation &middot; LSTM Temporal &middot; Explainable AI
         </footer>
       </div>
     </BrowserRouter>
