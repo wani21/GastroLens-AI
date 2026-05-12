@@ -37,20 +37,13 @@ app.add_middleware(
 # =========================================================================
 # Lifespan
 # =========================================================================
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        model_service.load()
-    except Exception as e:
-        print(f"[Startup] WARNING: Could not load model: {e}")
-    yield
+
 
 app = FastAPI(
     title="GastroLens-AI API",
     description="Gastrointestinal disease classification (4 classes: "
                 "esophagitis, normal, polyp, ulcer)",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
 app.add_middleware(
