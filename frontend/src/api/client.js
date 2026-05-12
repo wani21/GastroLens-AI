@@ -1,5 +1,13 @@
 import axios from "axios";
 
+import axios from 'axios';
+
+const client = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000'
+});
+
+export default client;
+
 // Change this if your backend runs on a different host/port
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 

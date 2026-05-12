@@ -12,6 +12,22 @@ import shap
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+
+import os
+from huggingface_hub import hf_hub_download
+
+HF_REPO = os.environ.get("HF_REPO", "your-username/gastrolens")
+
+# replace your existing model path logic with this:
+def get_model_path():
+    path = hf_hub_download(
+        repo_id=HF_REPO,
+        filename="best_model.keras",
+        token=os.environ.get("HF_TOKEN")
+    )
+    return path
+
+    
 # =========================================================================
 # Configuration
 # =========================================================================
