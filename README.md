@@ -162,7 +162,6 @@ Multi-disease classification expansion
 
 Rohan Wani
 
-(Add team members if any)
 
 📌 Note
 
