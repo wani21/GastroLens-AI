@@ -21,18 +21,7 @@ from fastapi.responses import JSONResponse
 from backend.model_service import model_service
 from backend.segmentation_model import seg_model, generate_segmentation_mask
 
-
-from fastapi.middleware.cors import CORSMiddleware
-import os
-
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # =========================================================================
 # Lifespan
@@ -48,7 +37,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_URL, "http://localhost:5173", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
